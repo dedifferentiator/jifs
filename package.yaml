@@ -24,9 +24,16 @@ dependencies:
 - HFuse == 0.2.5.0
 - unix
 - bytestring
+- hpath == 0.11.0
+- hpath-directory == 0.14.0
+- hpath-posix == 0.13.0
+- hpath-io == 0.12.0
+- hpath-filepath == 0.10.4
 
 library:
   source-dirs: src
+  ghc-options:
+  - -Wall
 
 executables:
   jifs-exe:
@@ -36,6 +43,9 @@ executables:
     - -threaded
     - -rtsopts
     - -with-rtsopts=-N
+    default-extensions:
+    - TupleSections
+    - RecordWildCards
     dependencies:
     - jifs
 

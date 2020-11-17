@@ -37,6 +37,14 @@ packages:
 #
 extra-deps:
 - HFuse-0.2.5.0
+- hpath-io-0.12.0
+- hpath-0.11.0
+- hpath-directory-0.14.0
+- hpath-posix-0.13.0
+- IfElse-0.85
+- hpath-filepath-0.10.4
+- streamly-posix-0.1.0.1
+
 # - acme-missiles-0.3
 # - git: https://github.com/commercialhaskell/stack.git
 #   commit: e7b331f14bcffb8367cd58fbfc8b40ec7642100a
