@@ -1,5 +1,4 @@
 .stack-work/
 *~
-fsmntpoint
-test
 stack.yaml.lock
+dist-newstyle/

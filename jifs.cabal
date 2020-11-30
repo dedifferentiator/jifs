@@ -6,59 +6,61 @@ cabal-version: 1.12
 
 name:           jifs
 version:        0.1.0.0
-description:    Please see the README on GitHub at <https://github.com/githubuser/jifs#readme>
-homepage:       https://github.com/githubuser/jifs#readme
-bug-reports:    https://github.com/githubuser/jifs/issues
-author:         Author name here
-maintainer:     example@example.com
-copyright:      2020 Author name here
-license:        BSD3
+description:    Please see the README on GitHub at <github.com/dedifferentiator/jifs/blob/master/README.md>
+homepage:       https://github.com/github.com/dedifferentiator#readme
+bug-reports:    https://github.com/github.com/dedifferentiator/issues
+author:         dedifferentiator
+maintainer:     dedifferentiator
+copyright:      2020 yohashi, dedifferentiator
+license:        GPL-2.0
 license-file:   LICENSE
 build-type:     Simple
 extra-source-files:
     README.md
-    ChangeLog.md
 
 source-repository head
   type: git
-  location: https://github.com/githubuser/jifs
+  location: https://github.com/github.com/dedifferentiator
+  subdir: jifs
 
 library
   other-modules:
       Paths_jifs
   hs-source-dirs:
       src
-  ghc-options: -Wall
   build-depends:
-      HFuse ==0.2.5.0
+      aeson
     , base >=4.7 && <5
     , bytestring
-    , hpath ==0.11.0
-    , hpath-directory ==0.14.0
-    , hpath-filepath ==0.10.4
-    , hpath-io ==0.12.0
-    , hpath-posix ==0.13.0
+    , clock
+    , directory
+    , filepath
+    , libfuse3 >=0.1
+    , resourcet
+    , time
     , unix
   default-language: Haskell2010
 
-executable jifs-exe
+executable jifs
   main-is: Main.hs
   other-modules:
+      CLoff
       Paths_jifs
   hs-source-dirs:
       app
-  default-extensions: TupleSections RecordWildCards
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      HFuse ==0.2.5.0
+      aeson
     , base >=4.7 && <5
     , bytestring
-    , hpath ==0.11.0
-    , hpath-directory ==0.14.0
-    , hpath-filepath ==0.10.4
-    , hpath-io ==0.12.0
-    , hpath-posix ==0.13.0
+    , clock
+    , directory
+    , filepath
     , jifs
+    , libfuse3 >=0.1
+    , linux-xattr >=0.1
+    , resourcet
+    , time
     , unix
   default-language: Haskell2010
 
@@ -71,14 +73,15 @@ test-suite jifs-test
       test
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      HFuse ==0.2.5.0
+      aeson
     , base >=4.7 && <5
     , bytestring
-    , hpath ==0.11.0
-    , hpath-directory ==0.14.0
-    , hpath-filepath ==0.10.4
-    , hpath-io ==0.12.0
-    , hpath-posix ==0.13.0
+    , clock
+    , directory
+    , filepath
     , jifs
+    , libfuse3 >=0.1
+    , resourcet
+    , time
     , unix
   default-language: Haskell2010

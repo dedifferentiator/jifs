@@ -1,228 +1,210 @@
+-- Copyright (C) 2020 yohashi
+--               2020 dedifferentiator
+
+-- This program is free software: you can redistribute it and/or modify
+-- it under the terms of the GNU General Public License as published by
+-- the Free Software Foundation, either version 2 of the License, or
+-- (at your option) any later version.
+
+-- This program is distributed in the hope that it will be useful,
+-- but WITHOUT ANY WARRANTY; without even the implied warranty of
+-- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+-- GNU General Public License for more details.
+
+-- You should have received a copy of the GNU General Public License
+-- along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 module Main where
 
+import Control.Exception
 import qualified Data.ByteString.Char8 as B
-import Foreign.C.Error
-import System.Posix.Types
-import System.Posix.Files
+import Data.Function (fix)
+import Data.Void (Void)
+import Foreign.C.Types (CInt(..))
+import Foreign.C.Error (Errno(..), eACCES, eOK, eOPNOTSUPP)
+import System.Posix.Types (Fd(Fd), COff(..), ByteCount, DeviceID, FileMode, FileOffset)
+import qualified System.Posix.Files as F
 import System.Posix.Directory
-import System.Posix.Directory.Foreign
-import System.Posix.Directory.Traversals
-import System.Posix.ByteString.FilePath
-import System.Posix.FilePath ((</>))
+    (createDirectory,
+     openDirStream,
+     readDirStream,
+     removeDirectory,
+     closeDirStream)
 import System.Posix.IO
-import GHC.IO.Handle
-import System.Fuse
+    (OpenFileFlags(..),
+     OpenMode(..),
+     openFd,
+     closeFd,
+     defaultFileFlags,
+     handleToFd)
+import System.LibFuse3
+import System.Linux.XAttr (lCreateXAttr, lGetXAttr, lReplaceXAttr, lSetXAttr)
 import System.IO
-import Control.Exception (bracket)
+    (Handle,
+     hClose,
+     hFlush,
+     hSeek,
+     openFile,
+     stderr,
+     hPutStr,
+     SeekMode(AbsoluteSeek),
+     IOMode(..))
 
-
-type HT = ()
 
 main :: IO ()
-main = fuseMain helloFSOps defaultExceptionHandler
+main = fuseMain nFSOps defaultExceptionHandler
 
-helloFSOps :: FuseOperations Handle
-helloFSOps = defaultFuseOps { fuseGetFileStat        = nGetFileStat
-                            , fuseOpen               = nOpen
-                            , fuseRelease            = nRelease
-                            , fuseRead               = nRead
-                            , fuseWrite              = nWrite
-                            , fuseOpenDirectory      = nOpenDirectory
-                            , fuseReadDirectory      = nReadDirectory
-                            , fuseGetFileSystemStats = helloGetFileSystemStats
-                            }
+nFSOps :: FuseOperations Handle Void
+nFSOps = defaultFuseOperations
+  { fuseGetattr            = Just nGetAttr
+  , fuseOpen               = Just nOpen
+  , fuseRelease            = Just nRelease
+  , fuseFlush              = Just nFlush
+  , fuseRead               = Just nRead
+  , fuseWrite              = Just nWrite
+  , fuseReaddir            = Just $ \path _ -> nReadDirectory path
+  , fuseMkdir              = Just nMkdir
+  , fuseMknod              = Just nMknod
+  , fuseRmdir              = Just nRmdir
+  , fuseReadlink           = Just nReadLink
+  , fuseLink               = Just nCreateLink
+  , fuseSymlink            = Just nSymLink
+  , fuseUnlink             = Just nUnlink
+  , fuseStatfs             = Just nStatFS
+  , fuseFallocate          = Just $ const nFallocate
+  , fuseSetxattr           = Just nSetxattr
+  , fuseGetxattr           = Just nGetxattr
+  }
 
-helloString :: B.ByteString
-helloString = B.pack "Hello World, HFuse!\n"
+foreign import ccall "posix_fallocate"
+  c_posix_fallocate :: CInt -> COff -> COff -> IO CInt
 
-helloPath :: FilePath
-helloPath = "/hello"
+-- implements (@posix_fallocate(3)@)
+nFallocate :: Handle -> CInt -> FileOffset -> FileOffset -> IO Errno
+nFallocate _ mode _ _ | mode /= 0 = pure eOPNOTSUPP
+nFallocate h _ offset len = do
+  (Fd fd) <- handleToFd h
+  Errno <$> c_posix_fallocate fd offset len
 
-dirStat :: FuseContext -> FileStat
-dirStat ctx = FileStat { statEntryType = Directory
-                       , statFileMode = foldr1 unionFileModes
-                                          [ ownerReadMode
-                                          , ownerExecuteMode
-                                          , groupReadMode
-                                          , groupExecuteMode
-                                          , otherReadMode
-                                          , otherExecuteMode
-                                          ]
-                       , statLinkCount = 2
-                       , statFileOwner = fuseCtxUserID ctx
-                       , statFileGroup = fuseCtxGroupID ctx
-                       , statSpecialDeviceID = 0
-                       , statFileSize = 4096
-                       , statBlocks = 1
-                       , statAccessTime = 0
-                       , statModificationTime = 0
-                       , statStatusChangeTime = 0
-                       }
+-- implements @setxattr(2)@
+nSetxattr :: FilePath -> String -> B.ByteString -> SetxattrFlag -> IO Errno
+nSetxattr path name value flag =
+  let f = case flag of
+            SetxattrDefault -> lSetXAttr
+            SetxattrCreate  -> lCreateXAttr
+            SetxattrReplace -> lReplaceXAttr
+  in tryErrno_ $ f path name value
 
-fileStat :: FuseContext -> FileStat
-fileStat ctx = FileStat { statEntryType = RegularFile
-                        , statFileMode = foldr1 unionFileModes
-                                           [ ownerReadMode
-                                           , groupReadMode
-                                           , otherReadMode
-                                           ]
-                        , statLinkCount = 1
-                        , statFileOwner = fuseCtxUserID ctx
-                        , statFileGroup = fuseCtxGroupID ctx
-                        , statSpecialDeviceID = 0
-                        , statFileSize = 0  -- replace with real value
-                        , statBlocks = 1
-                        , statAccessTime = 0
-                        , statModificationTime = 0
-                        , statStatusChangeTime = 0
-                        }
+-- implements @getxattr(2)@.
+nGetxattr :: FilePath -> String -> IO (Either Errno B.ByteString)
+nGetxattr path name = tryErrno $ lGetXAttr path name
 
-helloGetFileStat :: FilePath -> IO (Either Errno FileStat)
-helloGetFileStat "/" = do
-    Right . dirStat <$> getFuseContext
-helloGetFileStat path | path == helloPath = do
-    Right . fileStat <$> getFuseContext
-helloGetFileStat _ =
-    return $ Left eNOENT
+-- implements (POSIX @lstat(2)@)
+nGetAttr :: FilePath -> Maybe Handle -> IO (Either Errno FileStat)
+nGetAttr path _ = tryErrno . getFileStat $ path
 
-nGetFileStat :: FilePath -> IO (Either Errno FileStat)
-nGetFileStat p = do
-    st <- getFileStatus p
-    return $ Right $ FileStat
-                     (fileModeToEntryType $ fileMode st)
-                     (fileMode st)
-                     (linkCount st)
-                     (fileOwner st)
-                     (fileGroup st)
-                     (specialDeviceID st)
-                     (fileSize st)
-                     1
-                     (accessTime st)
-                     (modificationTime st)
-                     (statusChangeTime st)
+-- implements (POSIX @mkdir(2)@)
+nMkdir :: FilePath -> FileMode -> IO Errno
+nMkdir path mode = tryErrno_ $ createDirectory path mode
 
+-- implements (POSIX @mknod(2)@)
+nMknod :: FilePath -> FileMode -> DeviceID -> IO Errno
+nMknod path mode rdev = tryErrno_ $ case fileModeToEntryType mode of
+  RegularFile -> bracket
+                 (openFd path WriteOnly (Just mode) (defaultFileFlags{exclusive=True}))
+                 closeFd
+                 (\_ -> pure ())
+  Directory -> createDirectory path mode
+  NamedPipe -> F.createNamedPipe path mode
+  _ -> F.createDevice path mode rdev
 
-nOpenDirectory :: String -> IO Errno
-nOpenDirectory "/" = return eOK
-nOpenDirectory _   = return eNOENT
+-- implements (POSIX @rmdir(2)@)
+nRmdir :: FilePath -> IO Errno
+nRmdir = tryErrno_ . removeDirectory
 
-helloReadDirectory :: FilePath -> IO (Either Errno [(FilePath, FileStat)])
-helloReadDirectory "/" = do
-    ctx <- getFuseContext
-    return $ Right [(".",          dirStat  ctx)
-                   ,("..",         dirStat  ctx)
-                   ,(helloName,    fileStat ctx)
-                   ]
-    where (_:helloName) = helloPath
-helloReadDirectory _ = return (Left eNOENT)
+-- implements @readdir(3)@
+nReadDirectory :: FilePath -> IO (Either Errno [(FilePath, Maybe FileStat)])
+nReadDirectory path = tryErrno
+  $ bracket (openDirStream path) closeDirStream
+  $ \dp -> fmap reverse $ flip fix []
+  $ \loop acc -> do
+    entry <- readDirStream dp
+    if null entry
+      then pure acc
+      else loop $ (entry, Nothing) : acc
 
-defaultStats :: FuseContext -> [(FilePath, FileStat)]
-defaultStats ctx = [(".", dirStat ctx), ("..", dirStat ctx)]
-
-
-getDirStat :: FuseContext -> IO FileStat
-getDirStat ctx = return $ dirStat ctx
-
-nReadDirectoryFake :: FilePath -> IO (Either Errno [(FilePath, FileStat)])
-nReadDirectoryFake _ = Right . defaultStats <$> getFuseContext
-
-toFileStat :: FileStatus -> FileStat
-toFileStat st = FileStat (fileModeToEntryType $ fileMode st)
-                          (fileMode st)
-                          (linkCount st)
-                          (fileOwner st)
-                          (fileGroup st)
-                          (specialDeviceID st)
-                          (fileSize st)
-                          1
-                          (accessTime st)
-                          (modificationTime st)
-                          (statusChangeTime st)
-
-
--- reads dir content from dir stream
-readDirCon :: DirStream -> IO (Either Errno [(FilePath, FileStat)])
-readDirCon ds = do
-    (_, p) <- readDirEnt ds
-    if B.null p
-    then return $ Right []
-    else (<>) . fstat p <$> getFileStatus (toPath p) <*> readDirCon ds
-
-        where fstat p st = Right [(toPath p, toFileStat st)]
-              toPath p = B.unpack $ B.tail p
-
-
-
-readDirConFake :: DirStream -> IO (Either Errno [(FilePath, FileStat)])
-readDirConFake _ = helloReadDirectory "/"
-
--- reads direcotry content from path
--- FIXME: doesn't support reading from other dirs except root, ((why?))
-nReadDirectory :: FilePath -> IO (Either Errno [(FilePath, FileStat)])
-nReadDirectory "/" = -- (Right . defaultStats <$> getFuseContext) <>
-    bracket
-    (openDirStream "/")
-    closeDirStream
-    readDirCon
-nReadDirectory _ = return $ Left eNOENT -- jifs doesn't support directories yet
-
-helloOpen :: FilePath -> OpenMode -> OpenFileFlags -> IO (Either Errno HT)
-helloOpen path mode _
-    | path == helloPath = case mode of
-                            ReadOnly -> return (Right ())
-                            _        -> return (Left eACCES)
-    | otherwise         = return (Left eNOENT)
-
-
+-- merges OpenMode and OpenFileFlags to IOMode
 toIOMode :: OpenMode -> OpenFileFlags -> IOMode
 toIOMode ReadOnly _ = ReadMode
 toIOMode WriteOnly (OpenFileFlags a _ _ _ _) = if a then AppendMode else WriteMode
 toIOMode ReadWrite _ = ReadWriteMode
 
+-- outputs to stdout mode and file control flags
+nDebugPrintMode :: FilePath
+                -> OpenMode
+                -> OpenFileFlags
+                -> IO (Either Errno Handle)
+                -> IO (Either Errno Handle)
+nDebugPrintMode path mode flags hFD = do
+  putStrLn $ "Path -> " <> path 
+          <> "\nOpenFileFlags ->\nappend: " <> show (append flags)
+          <> "\n\texclusive: "              <> show (exclusive flags)
+          <> "\n\tnoctty: "                 <> show (noctty flags)
+          <> "\n\tnonBlock: "               <> show (nonBlock flags)
+          <> "\n\ttrunc: "                  <> show (trunc flags)
+          <> "\n\nMode -> \n\t" <> case mode of
+                                  ReadOnly  -> "ReadOnly"
+                                  WriteOnly -> "WriteOnly"
+                                  ReadWrite -> "ReadWrite"
+          <> "\n"
+  hFD
 
+-- implements (POSIX @open(2)@)
 nOpen :: FilePath -> OpenMode -> OpenFileFlags -> IO (Either Errno Handle)
-nOpen p mode flags = Right <$> openFile p (toIOMode mode flags)
+nOpen path mode flags = nDebugPrintMode path mode flags $
+  Right <$> openFile path (toIOMode mode flags)
 
-
+-- implements  Unix98 @pread(2)@
 nRead :: FilePath -> Handle -> ByteCount -> FileOffset -> IO (Either Errno B.ByteString)
 nRead _ h count offset = do
-    hSeek h AbsoluteSeek (toInteger offset)
-    Right <$> B.hGet h (fromInteger $ toInteger count)
+  hSeek h AbsoluteSeek (toInteger offset)
+  Right <$> B.hGet h (fromInteger $ toInteger count)
 
-
+-- closes handle, calling on already closed handle has no effect
 nRelease :: FilePath -> Handle -> IO ()
 nRelease _ = hClose
 
+-- forces all buffered for the output items to be sent to the OS
+nFlush :: FilePath -> Handle -> IO Errno
+nFlush _ h = catch
+  (hFlush h >>= (\_ -> return eOK))
+  (\e -> do
+      let err = show (e :: IOException)
+      hPutStr stderr $ "Cannot flush file: " <> err
+      return eACCES)
 
-nWrite :: FilePath -> Handle -> B.ByteString -> FileOffset -> IO (Either Errno ByteCount)
+-- implements Unix98 @pwrite(2)@
+nWrite :: FilePath -> Handle -> B.ByteString -> FileOffset -> IO (Either Errno CInt)
 nWrite _ h content offset = do
-    hSeek h AbsoluteSeek (toInteger offset)
-    B.hPut h content
-    return $ Right . fromInteger . toInteger $ B.length content
+  hSeek h AbsoluteSeek (toInteger offset)
+  B.hPut h content
+  return $ Right . fromInteger . toInteger $ B.length content
 
--- tagfsCreateLink :: FilePath -> FilePath -> IO Errno
--- tagfsCreateLink src dst = do
--- 	let dstpath = dropFileName dst
--- 	forFile r src (return eNOENT) (const $ return eINVAL) $ \f -> case f of
--- 		RegularFile name ->
--- 			forDir r dstpath (return eNOENT) (const $ return eNOTDIR) $ \d -> case d of
--- 				TagDir tag -> do
--- 					let ts = getTagSet status
--- 					let tsNew = addTag tag name ts
--- 					updateStatusRef ref tsNew
--- 					return eOK
--- 				_ -> return eINVAL
--- 		_ -> return eINVAL
+nReadLink :: FilePath -> IO (Either Errno FilePath)
+nReadLink = tryErrno . F.readSymbolicLink
 
+--implements (POSIX @link(2)@).
+nCreateLink :: FilePath -> FilePath -> IO Errno
+nCreateLink src dst = tryErrno_ $ F.createLink src dst
 
-helloGetFileSystemStats :: String -> IO (Either Errno FileSystemStats)
-helloGetFileSystemStats _ =
-  return $ Right $ FileSystemStats
-    { fsStatBlockSize = 512
-    , fsStatBlockCount = 1
-    , fsStatBlocksFree = 1
-    , fsStatBlocksAvailable = 1
-    , fsStatFileCount = 5
-    , fsStatFilesFree = 10
-    , fsStatMaxNameLength = 255
-    }
+-- implements (POSIX @unlink(2)@)
+nSymLink :: FilePath -> FilePath -> IO Errno
+nSymLink src dst = tryErrno_ $ F.createSymbolicLink src dst
+
+-- implements (POSIX @unlink(2)@)
+nUnlink :: FilePath -> IO Errno
+nUnlink = tryErrno_ . F.removeLink
+
+-- implements @statfs(2)@.
+nStatFS :: FilePath -> IO (Either Errno FileSystemStats)
+nStatFS = tryErrno . getFileSystemStats

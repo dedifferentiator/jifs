@@ -1,14 +1,13 @@
 name:                jifs
 version:             0.1.0.0
-github:              "githubuser/jifs"
-license:             BSD3
-author:              "Author name here"
-maintainer:          "example@example.com"
-copyright:           "2020 Author name here"
+github:              "github.com/dedifferentiator/jifs"
+license:             GPL-2.0
+author:              "dedifferentiator"
+maintainer:          "dedifferentiator"
+copyright:           "2020 yohashi, dedifferentiator"
 
 extra-source-files:
 - README.md
-- ChangeLog.md
 
 # Metadata used when publishing your package
 # synopsis:            Short description of your package
@@ -17,36 +16,32 @@ extra-source-files:
 # To avoid duplicated efforts in documentation and dealing with the
 # complications of embedding Haddock markup inside cabal files, it is
 # common to point users to the README.md file.
-description:         Please see the README on GitHub at <https://github.com/githubuser/jifs#readme>
-
+description:         Please see the README on GitHub at <github.com/dedifferentiator/jifs/blob/master/README.md>
 dependencies:
 - base >= 4.7 && < 5
-- HFuse == 0.2.5.0
 - unix
 - bytestring
-- hpath == 0.11.0
-- hpath-directory == 0.14.0
-- hpath-posix == 0.13.0
-- hpath-io == 0.12.0
-- hpath-filepath == 0.10.4
+- clock
+- time
+- resourcet
+- libfuse3 >= 0.1
+- aeson
+- filepath
+- directory
 
 library:
   source-dirs: src
-  ghc-options:
-  - -Wall
 
 executables:
-  jifs-exe:
+  jifs:
     main:                Main.hs
     source-dirs:         app
     ghc-options:
     - -threaded
     - -rtsopts
     - -with-rtsopts=-N
-    default-extensions:
-    - TupleSections
-    - RecordWildCards
     dependencies:
+    - linux-xattr >= 0.1
     - jifs
 
 tests:
