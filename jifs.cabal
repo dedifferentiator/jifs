@@ -1,0 +1,87 @@
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.34.2.
+--
+-- see: https://github.com/sol/hpack
+
+name:           jifs
+version:        0.1.0.0
+description:    Please see the README on GitHub at <github.com/dedifferentiator/jifs/blob/master/README.md>
+homepage:       https://github.com/github.com/dedifferentiator#readme
+bug-reports:    https://github.com/github.com/dedifferentiator/issues
+author:         dedifferentiator
+maintainer:     dedifferentiator
+copyright:      2020 yohashi, dedifferentiator
+license:        GPL-2.0
+license-file:   LICENSE
+build-type:     Simple
+extra-source-files:
+    README.md
+
+source-repository head
+  type: git
+  location: https://github.com/github.com/dedifferentiator
+  subdir: jifs
+
+library
+  other-modules:
+      Paths_jifs
+  hs-source-dirs:
+      src
+  build-depends:
+      aeson
+    , base >=4.7 && <5
+    , bytestring
+    , clock
+    , directory
+    , filepath
+    , libfuse3 >=0.1
+    , resourcet
+    , time
+    , unix
+  default-language: Haskell2010
+
+executable jifs
+  main-is: Main.hs
+  other-modules:
+      CLoff
+      Paths_jifs
+  hs-source-dirs:
+      app
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      aeson
+    , base >=4.7 && <5
+    , bytestring
+    , clock
+    , directory
+    , filepath
+    , jifs
+    , libfuse3 >=0.1
+    , linux-xattr >=0.1
+    , resourcet
+    , time
+    , unix
+  default-language: Haskell2010
+
+test-suite jifs-test
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules:
+      Paths_jifs
+  hs-source-dirs:
+      test
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      aeson
+    , base >=4.7 && <5
+    , bytestring
+    , clock
+    , directory
+    , filepath
+    , jifs
+    , libfuse3 >=0.1
+    , resourcet
+    , time
+    , unix
+  default-language: Haskell2010
