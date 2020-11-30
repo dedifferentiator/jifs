@@ -29,8 +29,7 @@ library
   hs-source-dirs:
       src
   build-depends:
-      aeson
-    , base >=4.7 && <5
+      base >=4.7 && <5
     , bytestring
     , clock
     , directory
@@ -44,14 +43,12 @@ library
 executable jifs
   main-is: Main.hs
   other-modules:
-      CLoff
       Paths_jifs
   hs-source-dirs:
       app
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      aeson
-    , base >=4.7 && <5
+      base >=4.7 && <5
     , bytestring
     , clock
     , directory
@@ -73,8 +70,7 @@ test-suite jifs-test
       test
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      aeson
-    , base >=4.7 && <5
+      base >=4.7 && <5
     , bytestring
     , clock
     , directory

@@ -25,7 +25,6 @@ dependencies:
 - time
 - resourcet
 - libfuse3 >= 0.1
-- aeson
 - filepath
 - directory
 
